@@ -1,4 +1,4 @@
-const C='bc-cultos-v12',Q='?v=12',F=['./','index.html','style.css'+Q,'app.js'+Q,'icon.svg','manifest.webmanifest','vendor/jspdf.umd.min.js'+Q,'vendor/jszip.min.js'+Q,'img/templo-lotado.jpg','img/galerias.jpg','img/palco.jpg','img/coral-natal.jpg'];
+const C='bc-cultos-v13',Q='?v=13',F=['./','index.html','style.css'+Q,'app.js'+Q,'icon.svg','manifest.webmanifest','vendor/jspdf.umd.min.js'+Q,'vendor/jszip.min.js'+Q,'img/templo-lotado.jpg','img/galerias.jpg','img/palco.jpg','img/coral-natal.jpg'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(F.map(u=>new Request(u,{cache:'reload'})))))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>self.clients.claim()))});
 self.addEventListener('message',e=>{if(e.data==='skipWaiting')self.skipWaiting()});

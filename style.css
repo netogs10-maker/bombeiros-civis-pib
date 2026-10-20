@@ -55,3 +55,4 @@ nav a span{font-size:9px}nav a{font-size:19px}
 .stp{display:inline-flex;align-items:center;border:1px solid #c5ccd8;border-radius:10px;overflow:hidden}.stp button{border:0;background:#eef1f7;width:34px;height:34px;font-size:20px;font-weight:800;color:var(--navy)}.stp b{min-width:26px;text-align:center}
 .sbarP{position:fixed;left:0;right:0;bottom:62px;z-index:6;background:var(--navy);color:#fff;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 12px;border-top:3px solid var(--gold);flex-wrap:wrap}.sbarP small{display:block;color:var(--gold);font-size:11px}.sbarP b{font-size:17px}.sbT{font-size:12px;display:flex;gap:4px;align-items:center}.sbT input{width:auto;margin:0}
 @media(max-width:420px){.qg{grid-template-columns:1fr}.sbarP b{font-size:15px}}
+.qg>label.qamb{justify-content:flex-start;gap:8px;grid-column:1/-1}.qamb input{width:22px;height:22px;margin:0}
