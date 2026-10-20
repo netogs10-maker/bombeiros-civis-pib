@@ -10,8 +10,11 @@ const RESP='Antônio Neto e Equipe Operacional';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const defModelo=()=>[{dia:5,hora:'19:30',nome:'Sexta noite'},{dia:6,hora:'19:30',nome:'Sábado noite'},{dia:0,hora:'10:00',nome:'Domingo manhã'},{dia:0,hora:'18:00',nome:'Domingo noite'}];
-let cfg=JSON.parse(localStorage.getItem('cfg')||'null')||{modelo:defModelo(),polo:'PIB Batel',inicio:ymd(new Date()).slice(0,7)};
-function saveCfg(){localStorage.setItem('cfg',JSON.stringify(cfg))}
+const VER='v7';const CFGK='bc-cultos-cfg';
+// a chave 'cfg' é compartilhada com o app de Manutenção dos Polos (mesmo domínio github.io): só aproveita se for deste app
+function normCfg(c){c=(c&&typeof c==='object')?c:{};if(!Array.isArray(c.modelo)||!c.modelo.every(t=>t&&typeof t.dia==='number'))c.modelo=defModelo();c.modelo=c.modelo.map(t=>({dia:t.dia,hora:t.hora||'19:30',nome:t.nome||'Culto'}));if(typeof c.polo!=='string'||!c.polo)c.polo='PIB Batel';if(!/^\d{4}-\d{2}$/.test(c.inicio||''))c.inicio=ymd(new Date()).slice(0,7);return{modelo:c.modelo,polo:c.polo,inicio:c.inicio}}
+let cfg=(()=>{let c=null;try{c=JSON.parse(localStorage.getItem(CFGK)||'null')}catch(e){}if(!c){try{const o=JSON.parse(localStorage.getItem('cfg')||'null');if(o&&Array.isArray(o.modelo))c=o}catch(e){}}return normCfg(c)})();
+function saveCfg(){cfg=normCfg(cfg);localStorage.setItem(CFGK,JSON.stringify(cfg))}saveCfg();
 function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 const pd=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c||1)};
 const fmt=s=>{const d=pd(s);return d.toLocaleDateString('pt-BR')+' ('+DIAS[d.getDay()]+')'};
@@ -25,7 +28,12 @@ const hfmt=h=>h.toFixed(1).replace('.',',')+' h';
 // ---------- IndexedDB ----------
 let dbp;function db(){return dbp||(dbp=new Promise((ok,er)=>{const r=indexedDB.open('bc-cultos',2);r.onupgradeneeded=()=>{for(const s of['equipe','cultos','midias','viaturas'])if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>er(r.error)}))}
 async function tx(st,mode,fn){const d=await db();return new Promise((ok,er)=>{const t=d.transaction(st,mode);const r=fn(t.objectStore(st));t.oncomplete=()=>ok(r&&r.result);t.onerror=()=>er(t.error)})}
-const getAll=st=>tx(st,'readonly',s=>s.getAll());const get=(st,k)=>tx(st,'readonly',s=>s.get(k));const put=(st,v)=>tx(st,'readwrite',s=>s.put(v));const del=(st,k)=>tx(st,'readwrite',s=>s.delete(k));
+const arr=x=>Array.isArray(x)?x:[];
+function normOc(o){o=o||{};return{tipo:o.tipo||'Outro',hora:o.hora||'',desc:o.desc||'',acao:o.acao||'',enc:o.enc||'',midias:arr(o.midias)}}
+const NORM={cultos:c=>{if(!c)return c;c.data=c.data||'2000-01-01';c.hora=c.hora||'';c.nome=c.nome||'Culto';c.polo=c.polo||'PIB Batel';const b=arr(c.bc);c.bc=[b[0]||'',b[1]||''];c.seg=c.seg||'';c.bri=arr(c.bri);c.check=(c.check&&typeof c.check==='object')?c.check:{};c.ocorrencias=arr(c.ocorrencias).map(normOc);c.midias=arr(c.midias);c.obs=c.obs||'';c.checkin=c.checkin||'';c.checkout=c.checkout||'';c.amb=!!c.amb;c.viatura=c.viatura||'';return c},
+equipe:p=>p&&Object.assign({funcao:'bc',tel:'',cert:'',validade:''},p,{nome:p.nome||'(sem nome)'}),viaturas:v=>v&&Object.assign({placa:'',tipo:'Ambulância de apoio',condutor:'',obs:''},v,{nome:v.nome||'(sem nome)'})};
+const nrm=(st,v)=>NORM[st]?NORM[st](v):v;
+const getAll=st=>tx(st,'readonly',s=>s.getAll()).then(l=>arr(l).filter(Boolean).map(v=>nrm(st,v)));const get=(st,k)=>tx(st,'readonly',s=>s.get(k)).then(v=>nrm(st,v));const put=(st,v)=>tx(st,'readwrite',s=>s.put(v));const del=(st,k)=>tx(st,'readwrite',s=>s.delete(k));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 // ---------- mídia ----------
 function comprimir(file){return new Promise(ok=>{const img=new Image();img.onload=()=>{const m=1280,s=Math.min(1,m/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);c.toBlob(b=>ok(b),'image/jpeg',.72);URL.revokeObjectURL(img.src)};img.onerror=()=>ok(file);img.src=URL.createObjectURL(file)})}
@@ -47,7 +55,7 @@ const status=c=>c.concluido?['concluida','Atendido']:completo(c)?['pendente','Es
 function validade(p){if(!p.validade)return'';const d=(pd(p.validade)-new Date())/864e5;return d<0?'<span class="st atrasada">Certificado vencido</span>':d<60?'<span class="st pendente">Vence em breve</span>':''}
 // ---------- rotas ----------
 const R={};window.addEventListener('hashchange',go);
-async function go(){const[h,...a]=(location.hash.slice(1)||'painel').split('/');document.querySelectorAll('nav a').forEach(x=>x.classList.toggle('on',x.getAttribute('href')==='#'+h));window.scrollTo(0,0);try{await(R[h]||R.painel)(...a.map(decodeURIComponent))}catch(e){console.error(e);$('#app').innerHTML='<div class="card"><b>Erro ao abrir a tela.</b><p class="muted">'+esc(e.message)+'</p><button class="btn" onclick="location.reload()">Recarregar</button></div>'}}
+async function go(){const[h,...a]=(location.hash.slice(1)||'painel').split('/');document.querySelectorAll('nav a').forEach(x=>x.classList.toggle('on',x.getAttribute('href')==='#'+h));window.scrollTo(0,0);try{await(R[h]||R.painel)(...a.map(decodeURIComponent))}catch(e){console.error(e);$('#app').innerHTML='<div class="card"><b>Erro ao abrir a tela.</b><p class="muted">'+esc(e.message)+'</p><button class="btn" onclick="location.reload()">Recarregar</button><button class="btn out" onclick="forcarAtualizacao()">🔄 Forçar atualização</button><p class="muted">Versão '+VER+'. Seus dados (cultos, equipe, fotos) não são apagados.</p></div>'}}
 R.painel=async()=>{const m=mesAtual();const cs=await cultosMes(m);const eq=await equipe();const E=Object.fromEntries(eq.map(p=>[p.id,p]));
 const at=cs.filter(c=>c.concluido),oc=cs.reduce((s,c)=>s+c.ocorrencias.length,0),inc=cs.filter(c=>!completo(c)).length,hs=at.reduce((s,c)=>s+horas(c),0);
 const hoje=ymd(new Date());const prox=cs.filter(c=>c.data>=hoje&&!c.concluido).slice(0,6);
@@ -160,9 +168,10 @@ $('#app').innerHTML=`<div class="banner"><h2>Proposta – Piloto de 3 meses</h2>
 <h3>Entregas</h3><div class="card">✓ Relatório por culto (PDF)<br>✓ Relatório mensal consolidado: cultos atendidos, horas e ocorrências por tipo<br>✓ Relatório final do piloto com os indicadores dos 3 meses</div>
 <h3>Investimento</h3><div class="card"><b>A definir.</b></div>`};
 // ---------- ajustes / backup ----------
-R.config=async()=>{$('#app').innerHTML=`<h2>Ajustes</h2><h3>Backup</h3><div class="card"><p class="muted">Os dados ficam só neste aparelho. Exporte o backup com frequência (ex.: depois de cada fim de semana) e guarde no Google Drive ou no WhatsApp.</p><button class="btn sec" onclick="exportar()">⬇ Exportar backup (.zip)</button><label class="btn out">⬆ Importar backup<input type="file" accept=".zip" style="display:none" onchange="importar(this.files[0])"></label></div>
+R.config=async()=>{$('#app').innerHTML=`<h2>Ajustes</h2><div class="card"><b>Versão do aplicativo: ${VER}</b><p class="muted">Se alguma tela não aparecer ou o app parecer desatualizado, toque abaixo. Os dados salvos (cultos, equipe, viaturas, fotos) NÃO são apagados.</p><button class="btn sec" onclick="forcarAtualizacao()">🔄 Forçar atualização</button></div><h3>Backup</h3><div class="card"><p class="muted">Os dados ficam só neste aparelho. Exporte o backup com frequência (ex.: depois de cada fim de semana) e guarde no Google Drive ou no WhatsApp.</p><button class="btn sec" onclick="exportar()">⬇ Exportar backup (.zip)</button><label class="btn out">⬆ Importar backup<input type="file" accept=".zip" style="display:none" onchange="importar(this.files[0])"></label></div>
 <h3>Instalar no celular</h3><div class="card muted"><b>iPhone:</b> no Safari, toque em Compartilhar › Adicionar à Tela de Início.<br><b>Android:</b> no Chrome, menu ⋮ › Instalar app.</div>
 <div class="card muted"><b>Limitação:</b> sem sincronização na nuvem – cada celular guarda seus próprios dados.</div>`};
+window.forcarAtualizacao=async()=>{try{if('serviceWorker'in navigator)for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();if(window.caches)for(const k of await caches.keys())await caches.delete(k)}catch(e){}location.replace(location.pathname+'?atualizado='+Date.now()+location.hash)};
 window.exportar=async()=>{const z=new JSZip();const ms=await getAll('midias');z.file('dados.json',JSON.stringify({versao:1,cfg,equipe:await getAll('equipe'),viaturas:await getAll('viaturas'),cultos:await getAll('cultos'),midias:ms.map(m=>({id:m.id,tipo:m.tipo,nome:m.nome,quando:m.quando}))}));ms.forEach(m=>z.file('midias/'+m.id,m.blob));
 const b=await z.generateAsync({type:'blob'});window._ultimoZIP=b;const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`backup-bombeiros-cultos-${ymd(new Date())}.zip`;a.click()};
 window.importar=async f=>{if(!f)return;const z=await JSZip.loadAsync(f);const d=JSON.parse(await z.file('dados.json').async('string'));for(const m of d.midias){const fz=z.file('midias/'+m.id);if(fz)await put('midias',{...m,blob:new Blob([await fz.async('arraybuffer')],{type:m.tipo})})}for(const p of d.equipe)await put('equipe',p);for(const v of d.viaturas||[])await put('viaturas',v);for(const c of d.cultos)await put('cultos',c);if(d.cfg){cfg=d.cfg;saveCfg()}alert(`Backup importado: ${d.equipe.length} profissional(is), ${d.cultos.length} culto(s).`);go()};
@@ -195,4 +204,4 @@ document.addEventListener('keydown',e=>{if(!$('#apr'))return;if(['ArrowRight','P
 window.addEventListener('hashchange',()=>{if(!location.hash.startsWith('#apresentacao'))document.body.classList.remove('modoapr')});
 if('serviceWorker'in navigator){const tinha=!!navigator.serviceWorker.controller;let rec=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(tinha&&!rec){rec=true;location.reload()}});
 navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{const up=()=>reg.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000);if(reg.waiting)reg.waiting.postMessage('skipWaiting')}).catch(()=>{})}
-go();
+document.querySelector('.brand small').textContent='Bombeiros Civis nos Cultos · '+VER;go();
